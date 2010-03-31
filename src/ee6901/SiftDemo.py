@@ -12,15 +12,15 @@ from numpy import *
 from pylab import * # matlabplotlib
 from sift import *
 
-# change to images folder as siftWin32.exe cannot open file name with indirect path.
-
+# the project should start with workspace_loc:PyMosaick
 folder  = "./images";
 #os.system("cd");
-#os.system(cmdCdIn); # does not affect current Python process. Use os.chdir instead.
+# does not affect current Python process. Use os.chdir instead.
 #os.chdir(folder);
 images  = ["scene.pgm", "box.pgm"];
 keys    = ["scene.key", "box.key"];
 
+# SIFT
 process_image(folder + "/" + images[0], folder + "/" + keys[0]);
 process_image(folder + "/" + images[1], folder + "/" + keys[1]);
 
@@ -34,7 +34,8 @@ scores = match(descriptors[0], descriptors[1]);
 
 # plot
 im = [[] for i in range(2)];
-im[0] = flipud(imread(folder + "/" + images[0])); # flip the image so imshow and plot are consistent
+# flip the image so imshow and plot are consistent
+im[0] = flipud(imread(folder + "/" + images[0])); 
 im[1] = flipud(imread(folder + "/" + images[1]));
 
 figure(0);
