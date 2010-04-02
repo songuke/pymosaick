@@ -125,12 +125,18 @@ class KDTree(object):
         data : array-like, shape (n,k)
             The data points to be indexed. This array is not copied, and
             so modifying this data will result in bogus results.
+        custom : custom data associating with each data element. For example,
+        in image matching, each point usually attaches to an image index.
         leafsize : positive integer
-            The number of points at which the algorithm switches over to
-            brute-force.
+            The number of points stored at the leaf node. Brute force is 
+            used to search in leaf node.
         """
-        self.data = np.asarray(data)
-        self.n, self.m = np.shape(self.data)
+        # convert Python array to Numpy array
+        self.data = np.asarray(data) 
+        # 2-d matrix (n, m). 
+        # n represents the number of points in the data. 
+        # m represents the dimension of a points.
+        self.n, self.m = np.shape(self.data)  
         self.leafsize = int(leafsize)
         if self.leafsize<1:
             raise ValueError("leafsize must be at least 1")
@@ -154,13 +160,20 @@ class KDTree(object):
             self.children = less.children+greater.children
 
     def __build(self, idx, maxes, mins):
+        """
+        Only use index of data to pass down the tree. 
+        In C, this is equivalent to passing down pointers.
+        """
         if len(idx)<=self.leafsize:
             return KDTree.leafnode(idx)
         else:
-            data = self.data[idx]
+            data = self.data[idx] # return the list of points
             #maxes = np.amax(data,axis=0)
             #mins = np.amin(data,axis=0)
-            d = np.argmax(maxes-mins)
+            # return the largest dimension to split
+            # I guess this is to avoid elongated cell.
+            d = np.argmax(maxes-mins) 
+            # get the maximum and minimum value of that dimension
             maxval = maxes[d]
             minval = mins[d]
             if maxval==minval:
