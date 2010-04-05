@@ -17,8 +17,8 @@ folder  = "./images";
 #os.system("cd");
 # does not affect current Python process. Use os.chdir instead.
 #os.chdir(folder);
-images  = ["scene.pgm", "box.pgm"];
-keys    = ["scene.key", "box.key"];
+images  = ["scene.pgm", "basmati.pgm"];
+keys    = ["scene.key", "basmati.key"];
 
 # SIFT
 process_image(folder + "/" + images[0], folder + "/" + keys[0]);

@@ -5,6 +5,7 @@
 # Hua Binh Son, 2010
 
 import numpy as np
+import time
 from heapq import heappush, heappop
 import scipy.sparse
 
@@ -354,7 +355,10 @@ class KDTree(object):
             else:
                 raise ValueError("Requested %s nearest neighbors; acceptable numbers are integers greater than or equal to one, or None")
             for c in np.ndindex(retshape):
+                #start = time.clock();
                 hits = self.__query(x[c], k=k, p=p, distance_upper_bound=distance_upper_bound)
+                #elapsed = time.clock() - start;
+                #print elapsed;
                 if k>1:
                     for j in range(len(hits)):
                         dd[c+(j,)], ii[c+(j,)] = hits[j]
