@@ -193,7 +193,9 @@ class ImageMatch(object):
 class ImageMosaick(object):
     def __init__(self):
         self.images = None
-    
+        self.match = None
+        self.bundle = []
+        
     def mosaick(self, imageFiles):
         start = time.clock();
         
@@ -286,6 +288,38 @@ class ImageMosaick(object):
         elapsed = time.clock() - start;
         print "RANSAC: ", elapsed; 
         
+    def refinement(self):
+        """
+        Refine homography matrix H using Levenberg-Marquardt non-linear optimization.
+        """
+        # compute J'*J directly as J is sparse.
+        
+        
+    
+    def bundleAdjustment(self, match):
+        """
+        Every time add a new pair of images (ImageMatch) to the bundle and perform 
+        refinement to all existing homography matrices.
+        """
+        self.bundle.append(match);
+        
+        self.refinement();
+        
+    def panaroma(self):
+        """
+        Produce panoramic images from homographies.
+        """
+        # compute the size of the panorama
+        # for each pixel, do bilinear sampling
+        # reference
+        # http://www.ics.uci.edu/~dramanan/teaching/cs217_spring09/hw/hw3.html
+        # Since the matching is at the integer pixel coordinates, here we also use 
+        # integer pixel coordinates.
+        # The origin of each image is located at the upper left.
+        # Take image[0] as the reference image.
+        
+        
+        # Use the residual in the paper but refine all H. Then render with new H and compare.
         
     def show(self):
         #[im.show() for im in self.images];
