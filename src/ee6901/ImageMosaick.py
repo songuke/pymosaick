@@ -33,7 +33,13 @@ class Image(object):
         self.pixels = pixels;
         self.descriptors = descriptors;
         self.locations = locations;
-        self.shape = np.shape(self.pixels);
+        shape = np.shape(self.pixels);
+        if len(shape) == 2:
+            self.shape = shape;
+            self.channels = 1;
+        else:
+            self.shape = (shape[0], shape[1]);
+            self.channels = shape[2];
         
     def interpolate(self, x, y):
         h, w = self.shape;
@@ -100,9 +106,12 @@ class ImageManager(object):
             # SIFT features
             partName, partDot, partExt = file.rpartition('.');
             keyFile = ''.join(partName + partDot + ("key")); # join tuples to string
-            
+            pgmFile = ''.join(partName + partDot + ("pgm"));
+            if os.path.exists(pgmFile) == False:
+                pylab.imsave(pgmFile, pixels);
+                
             if os.path.exists(keyFile) == False:            
-                sift.process_image(file, keyFile);
+                sift.process_image(pgmFile, keyFile);
                 
             loc, des  = sift.read_features_from_file(keyFile);
             #im.features = [Feature(im.id, des[i], loc[i]) for i in range(len(des))];
@@ -136,14 +145,16 @@ class ImageMatch(object):
         Compute homography matrix to transform image 2 to image 1.
         idx: index to a subset of correspondences for homography computation.
         Return a 3x3 matrix [h11, h12, h13; h21, h22, h23; h31, h32, h33].
+        
+        Location from SIFT key file is in (y, x) format.
         """
         # each correspondence gives two equations
         nbEqns = len(idx) * 2;
         A = np.matrix(np.zeros((nbEqns, 9)));
         #b = np.zeros((nbEqns, 1));
         for i in range(len(idx)):
-            p1 = self.locs1[idx[i]]; p1x = p1[0]; p1y = p1[1];
-            p2 = self.locs2[idx[i]]; p2x = p2[0]; p2y = p2[1];
+            p1 = self.locs1[idx[i]]; p1x = p1[1]; p1y = p1[0];
+            p2 = self.locs2[idx[i]]; p2x = p2[1]; p2y = p2[0];
             A[2 * i, :] = [p2x, p2y, 1, 0, 0, 0, -p1x * p2x, -p1x * p2y, -p1x];
             A[2 * i + 1, :] = [0, 0, 0, p2x, p2y, 1, -p1y * p2x, -p1y * p2y, -p1y];
         # solve Ah = 0 using SVD
@@ -163,6 +174,7 @@ class ImageMatch(object):
         # RANSAC
         iters = 200;
         maxInliers = 0;
+        bestMask = None;
         for i in range(iters):
             idx = np.random.randint(0, len(self.locs1) - 1, size);
             """
@@ -178,7 +190,7 @@ class ImageMatch(object):
             # check for consistency
             mask = self.__checkConsistency__(H, 0.5);
             newInliers = np.sum(mask);
-            if newInliers > maxInliers:
+            if bestMask == None or newInliers > maxInliers:
                 maxInliers = newInliers;
                 bestMask = mask;
                 
@@ -211,12 +223,13 @@ class ImageMatch(object):
         mask = np.ones(len(self.locs1));
         for i in range(len(self.locs1)):
             #p2 = np.reshape(np.array([self.locs2[i][0], self.locs2[i][1], 1]), (3, 1));            
-            p2 = np.matrix([ [self.locs2[i][0]], [self.locs2[i][1]], [1] ]);
-            p1 = H * p2;
-            p1 = p1 / p1[2]; # convert back to non-homogeneous
+            p2 = np.matrix([ [self.locs2[i][1]], [self.locs2[i][0]], [1] ]);
+            p1 = np.ravel(H * p2);
+            p1 /= p1[2]; # convert back to non-homogeneous
             
             # compute the distance of p1 and original locs1
-            dist = (p1[0] - self.locs1[i][0])**2 + (p1[1] - self.locs1[i][1])**2;
+            # NOTE: p1[0] is x, self.locs1[i][1] is x. The way of index is quite confusing here!
+            dist = (p1[0] - self.locs1[i][1])**2 + (p1[1] - self.locs1[i][0])**2;
             if dist > eps2:
                 mask[i] = 0; # outlier
 
@@ -368,18 +381,25 @@ class ImageMosaick(object):
             A = np.matrix(np.eye(3));
             
             h = 0; w = 0;
-            for j in path:
-                if j < im.id:
-                    H = self.match[j][im.id].H;
+            for j in range(len(path) - 1):
+                # project path[j] to path[j+1]
+                src = path[j];
+                dest = path[j+1];
+                
+                if dest < src:
+                    H = self.match[dest][src].H;
                 else:
                     # inverse
-                    H = self.match[im.id][j].H.I;
+                    H = self.match[src][dest].H.I;
+                
+                imSrc = self.images[src];
+                imDest = self.images[dest];
                     
                 # find xmin and ymin
                 if h == 0:
-                    h, w = im.shape;            
+                    h, w = imSrc.shape;            
                     
-                hj, wj = self.images[j].shape;
+                hj, wj = imDest.shape;
                 # project to image[j]
                 corners = np.matrix([[0, 0, 1], [w - 1, 0, 1], [w - 1, h - 1, 1], [0, h - 1, 1]]);
                 xmin = 0; xmax = wj - 1;
@@ -387,8 +407,7 @@ class ImageMosaick(object):
                 for c in corners:
                     p = np.matrix(c.reshape((3, 1)));
                     q = np.ravel(H * p);
-                    q[0] /= q[2];
-                    q[1] /= q[2];
+                    q /= q[2];
                     xmin = np.amin([xmin, q[0]]);
                     ymin = np.amin([ymin, q[1]]);
                     xmax = np.amax([xmax, q[0]]);
@@ -448,7 +467,8 @@ class ImageMosaick(object):
                     cur = i;     
                     
         # return the shortest path
-        path = [];        
+        path = [dest];
+        cur = dest;        
         while parent[cur] != -1:
             path.append(parent[cur]);
             cur = parent[cur];
@@ -468,21 +488,27 @@ class ImageMosaick(object):
         pylab.figure();
         pylab.ion();
         #pixels = np.ndarray(shape=(h, w, 3), dtype=float, order='C');
-        pixels = np.zeros((h, w, 3));
+        if self.images[0].channels > 1:
+            pixels = np.zeros((h, w, self.images[0].channels));
+        else:
+            pixels = np.zeros((h, w));
         for i in range(h):
             print "Row: ", i
             for j in range(w):
                 p = np.matrix([j, i, 1]).reshape((3, 1));
+                sum = [0] * self.images[0].channels;
+                total = 0;
                 for im in self.images:
                     # take the inverse homography to the current image's domain
                     q = np.ravel(im.H.I * p);
-                    q[0] /= q[2];
-                    q[1] /= q[2];
+                    q /= q[2];
                     qh, qw = im.shape;
                     if q[0] < 0 or q[0] >= qw or q[1] < 0 or q[1] >= qh: continue;
                     color = im.interpolate(q[0], q[1]);
-                    pixels[i, j] = color;
-            
+                    sum += color;
+                    total += 1;
+                if total > 0:
+                    pixels[i, j] = sum / total;
             #pylab.imshow(pixels);
             #pylab.draw();
         #return pixels;
@@ -490,10 +516,10 @@ class ImageMosaick(object):
         
     def show(self):
         #[im.show() for im in self.images];
-        pylab.figure(0);
+        pylab.figure();
         self.match[0][1].show();
         
-        pylab.figure(1);
+        pylab.figure();
         pylab.imshow(self.pixels);
         pylab.axis('image');
         
