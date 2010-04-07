@@ -11,12 +11,15 @@ import pylab
 import sift
 import KdtreeCustom
 import time
+import heapq
 
 class Feature(object):
     def __init__(self, imageId, descriptor, location):
         self.imageId    = imageId;
         self.descriptor = descriptor;
         self.location   = location;
+        self.H          = None;
+        self.mosaickShape = None;
 
 #def featureDistance(f1, f2):
     #return 1.0 - abs(numpy.dot(f1.descriptor, f2.descriptor));
@@ -30,6 +33,42 @@ class Image(object):
         self.pixels = pixels;
         self.descriptors = descriptors;
         self.locations = locations;
+        self.shape = np.shape(self.pixels);
+        
+    def interpolate(self, x, y):
+        h, w = self.shape;
+        
+        x0 = np.floor(x);
+        x1 = x0 + 1;
+        y0 = np.floor(y);
+        y1 = y0 + 1;
+        
+        if x0 < 0:  x0 = 0;
+        if x0 >= w: x0 = w - 1;
+        if x1 < 0:  x1 = 0;
+        if x1 >= w: x1 = w - 1;
+        if y0 < 0:  y0 = 0;
+        if y0 >= h: y0 = h - 1;
+        if y1 < 0:  y1 = 0;
+        if y1 >= h: y1 = h - 1;
+        
+        s = x - x0;
+        t = y - y0;
+        
+        # A --- B
+        # | E   |
+        # C --- D
+        
+        colorA = self.pixels[y0, x0];
+        colorB = self.pixels[y0, x1];
+        colorC = self.pixels[y1, x0];
+        colorD = self.pixels[y1, x1];
+                
+        colorAB = (1 - s) * colorA + s * colorB;
+        colorCD = (1 - s) * colorC + s * colorD;
+        
+        color = (1 - t) * colorAB + t * colorCD;
+        return color; 
         
     def show(self):
         pylab.figure();
@@ -157,6 +196,8 @@ class ImageMatch(object):
         H = self.__homography__(idx);        
         print "Best homography: ", H
         print "Inliers/Outliers: ", np.sum(bestMask), "/", len(bestMask) - np.sum(bestMask);
+        # store homography matrix
+        self.H = H; 
                     
     def __checkConsistency__(self, H, eps=1):
         """
@@ -195,6 +236,7 @@ class ImageMosaick(object):
         self.images = None
         self.match = None
         self.bundle = []
+        self.shape = None
         
     def mosaick(self, imageFiles):
         start = time.clock();
@@ -284,10 +326,180 @@ class ImageMosaick(object):
         # recover H for each pair of images
         # and use RANSAC to reject outliers
         start = time.clock();
-        self.match[0][1].ransac();
+        for i in range(len(self.images) - 1):
+            for j in range(i + 1, len(self.images)): 
+                self.match[i][j].ransac();
         elapsed = time.clock() - start;
-        print "RANSAC: ", elapsed; 
+        print "RANSAC: ", elapsed;
         
+        # find global transform to reference images
+        ref = 0;
+        start = time.clock();
+        self.findGlobalTransform(ref); 
+        elapsed = time.clock() - start;
+        print "Global transform: ", elapsed;
+        
+        # perform stitching
+        start = time.clock();
+        self.stitch(ref);
+        elapsed = time.clock() - start;
+        print "Stitch: ", elapsed; 
+        
+    def findGlobalTransform(self, ref = 0):
+        """
+        Find global transformation matrix for each image to the reference image.
+        Input: 
+            ref: reference image index. Default is 0.
+        """
+        # reference image is image[0]        
+        self.images[ref].H = np.matrix(np.eye(3));
+        
+        # global mosaick size
+        gh, gw = self.images[ref].shape;
+        gxmin = 0; gxmax = gw - 1;
+        gymin = 0; gymax = gh - 1;
+        
+        for im in self.images:
+            if im.id == ref: continue;
+            
+            # find a path to imageRef
+            path = self.findPath(im.id, ref);
+            # accumulate H
+            A = np.matrix(np.eye(3));
+            
+            h = 0; w = 0;
+            for j in path:
+                if j < im.id:
+                    H = self.match[j][im.id].H;
+                else:
+                    # inverse
+                    H = self.match[im.id][j].H.I;
+                    
+                # find xmin and ymin
+                if h == 0:
+                    h, w = im.shape;            
+                    
+                hj, wj = self.images[j].shape;
+                # project to image[j]
+                corners = np.matrix([[0, 0, 1], [w - 1, 0, 1], [w - 1, h - 1, 1], [0, h - 1, 1]]);
+                xmin = 0; xmax = wj - 1;
+                ymin = 0; ymax = hj - 1;
+                for c in corners:
+                    p = np.matrix(c.reshape((3, 1)));
+                    q = np.ravel(H * p);
+                    q[0] /= q[2];
+                    q[1] /= q[2];
+                    xmin = np.amin([xmin, q[0]]);
+                    ymin = np.amin([ymin, q[1]]);
+                    xmax = np.amax([xmax, q[0]]);
+                    ymax = np.amax([ymax, q[1]]);
+                
+                # update the new image size
+                w = np.ceil(xmax - xmin);
+                h = np.ceil(ymax - ymin);
+                
+                # translate to new origin (xmin, ymin)
+                #T = np.matrix([[1, 0, -xmin], [0, 1, -ymin], [0, 0, 1]]);
+                #A = A * H * T;
+                A = H * A;
+                
+            # store global homography for each image
+            im.H = A;
+            #im.shape = (h, w);
+            
+            # find global image size
+            gxmin = np.amin([gxmin, xmin]);
+            gymin = np.amin([gymin, ymin]);
+            gxmax = np.amax([gxmax, xmax]);
+            gymax = np.amax([gymax, ymax]);
+        
+        # return the global size
+        gw = np.ceil(gxmax - gxmin);
+        gh = np.ceil(gymax - gymin);
+        T = np.matrix([[1, 0, -gxmin], [0, 1, -gymin], [0, 0, 1]]);
+        for im in self.images:
+            im.H = T * im.H; 
+        
+        self.shape = (gh, gw);
+    
+    def findPath(self, src, dest):
+        # dijkstra shortest path from src to dest
+        visited = [False]   * len(self.images);
+        parent  = [-1]      * len(self.images);
+        dist    = [np.inf]  * len(self.images);
+                        
+        dist[src] = 0;        
+        cur = src;
+        while cur != dest:                           
+            visited[cur] = True;
+            
+            # neighbors
+            for i in range(len(self.images)):
+                if visited[i] == False:
+                    if self.match[cur][i] != None or self.match[i][cur] != None:
+                        if dist[i] > dist[cur] + 1:
+                            dist[i] = dist[cur] + 1;                    
+                            parent[i] = cur;
+            # next
+            min = np.inf;            
+            for i in range(len(self.images)):
+                if visited[i] == False and dist[i] < min:
+                    min = dist[i];
+                    cur = i;     
+                    
+        # return the shortest path
+        path = [];        
+        while parent[cur] != -1:
+            path.append(parent[cur]);
+            cur = parent[cur];
+        
+        # in-place reverse
+        path.reverse();
+        return path;
+    
+    def stitch(self, ref = 0):
+        """
+        Stitch all images together.
+        Input:
+            ref: reference image index.
+        """
+        
+        h, w = self.shape;        
+        pylab.figure();
+        pylab.ion();
+        #pixels = np.ndarray(shape=(h, w, 3), dtype=float, order='C');
+        pixels = np.zeros((h, w, 3));
+        for i in range(h):
+            print "Row: ", i
+            for j in range(w):
+                p = np.matrix([j, i, 1]).reshape((3, 1));
+                for im in self.images:
+                    # take the inverse homography to the current image's domain
+                    q = np.ravel(im.H.I * p);
+                    q[0] /= q[2];
+                    q[1] /= q[2];
+                    qh, qw = im.shape;
+                    if q[0] < 0 or q[0] >= qw or q[1] < 0 or q[1] >= qh: continue;
+                    color = im.interpolate(q[0], q[1]);
+                    pixels[i, j] = color;
+            
+            #pylab.imshow(pixels);
+            #pylab.draw();
+        #return pixels;
+        self.pixels = pixels;
+        
+    def show(self):
+        #[im.show() for im in self.images];
+        pylab.figure(0);
+        self.match[0][1].show();
+        
+        pylab.figure(1);
+        pylab.imshow(self.pixels);
+        pylab.axis('image');
+        
+        pylab.show();
+        
+
     def refinement(self):
         """
         Refine homography matrix H using Levenberg-Marquardt non-linear optimization.
@@ -317,15 +529,10 @@ class ImageMosaick(object):
         # integer pixel coordinates.
         # The origin of each image is located at the upper left.
         # Take image[0] as the reference image.
-        
+        stack = []
         
         # Use the residual in the paper but refine all H. Then render with new H and compare.
         
-    def show(self):
-        #[im.show() for im in self.images];
-        pylab.figure(0);
-        self.match[0][1].show();
-        pylab.show();
         
 def main():
     imo = ImageMosaick();
