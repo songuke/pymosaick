@@ -12,6 +12,7 @@ import sift
 import KdtreeCustom
 import time
 import heapq
+import Image
 
 class Feature(object):
     def __init__(self, imageId, descriptor, location):
@@ -24,9 +25,9 @@ class Feature(object):
 #def featureDistance(f1, f2):
     #return 1.0 - abs(numpy.dot(f1.descriptor, f2.descriptor));
         
-class Image(object):
+class ImageObject(object):
     '''
-    Image class encapsulates image pixel data, SIFT features, and 
+    ImageObject class encapsulates image pixel data, SIFT features, and 
     '''
     def __init__(self, id, pixels, locations, descriptors):
         self.id     = id;
@@ -90,12 +91,12 @@ class ImageManager(object):
         self.__dict__ = self.__shared_state
         # and whatever else you want in your class -- that's all!
         
-        # dictionary to map ID to Image object
+        # dictionary to map ID to ImageObject object
         self.totalImages    = 0;
         self.dictIdImage    = {};
         self.dictFileImage  = {};
         
-    # Load image from a file and return Image object
+    # Load image from a file and return ImageObject object
     def loadImage(self, file):
         if file in self.dictFileImage:
             return self.dictFileImage[file];
@@ -105,10 +106,21 @@ class ImageManager(object):
             
             # SIFT features
             partName, partDot, partExt = file.rpartition('.');
-            keyFile = ''.join(partName + partDot + ("key")); # join tuples to string
-            pgmFile = ''.join(partName + partDot + ("pgm"));
+            keyFile = ''.join(partName + partDot + "key"); 
+            pgmFile = ''.join(partName + partDot + "pgm");
             if os.path.exists(pgmFile) == False:
-                pylab.imsave(pgmFile, pixels);
+                #pylab.imsave(pgmFile, pixels);
+                if len(pixels.shape) == 2:
+                    pilImage = Image.fromarray(pixels, 'L');                    
+                else:
+                    h = pixels.shape[0];
+                    w = pixels.shape[1];                    
+                    pixelsGray = np.matrix(np.zeros((h, w)), dtype=np.uint8);                    
+                    for i in range(h):
+                        for j in range(w):
+                            pixelsGray[i, j] = (np.mean(pixels[i, j])).astype(np.uint8);
+                    pilImage = Image.fromarray(pixelsGray, 'L');
+                pilImage.save(pgmFile);
                 
             if os.path.exists(keyFile) == False:            
                 sift.process_image(pgmFile, keyFile);
@@ -117,7 +129,7 @@ class ImageManager(object):
             #im.features = [Feature(im.id, des[i], loc[i]) for i in range(len(des))];
             #print "Total features: ", len(im.features)
             
-            im = Image(id, pixels, loc, des);
+            im = ImageObject(id, pixels, loc, des);
             
             # add to dictionary
             self.dictFileImage[file]    = im;
@@ -134,9 +146,9 @@ class ImageManager(object):
             return None;
         
 class ImageMatch(object):
-    def __init__(self):
-        self.image1 = None;
-        self.image2 = None;
+    def __init__(self, image1, image2):
+        self.image1 = image1;
+        self.image2 = image2;
         self.locs1 = [];
         self.locs2 = [];
         
@@ -205,11 +217,14 @@ class ImageMatch(object):
         self.locs1 = locs1;
         self.locs2 = locs2;  
         idx = range(len(self.locs1));            
-        H = self.__homography__(idx);        
+        H = self.__homography__(idx);    
+        inliers = np.sum(bestMask);
+        outliers = len(bestMask) - np.sum(bestMask);
         print "Best homography: ", H
-        print "Inliers/Outliers: ", np.sum(bestMask), "/", len(bestMask) - np.sum(bestMask);
+        print "Inliers/Outliers: ", inliers, "/", outliers;
         # store homography matrix
-        self.H = H; 
+        self.H = H;
+        return inliers, outliers 
                     
     def __checkConsistency__(self, H, eps=1):
         """
@@ -251,7 +266,7 @@ class ImageMosaick(object):
         self.bundle = []
         self.shape = None
         
-    def mosaick(self, imageFiles):
+    def mosaick(self, imageFiles, ref=0):
         start = time.clock();
         
         manager = ImageManager();
@@ -262,11 +277,19 @@ class ImageMosaick(object):
         
         start = time.clock();
         
-        self.match = [[ImageMatch()] * len(self.images)] * len(self.images);
+        # Note: cannot use below statement to create a 2d list.
+        # The rows are duplicated! Objects from the second row are the same as 
+        # the first row!
+        #self.match = [[None] * len(self.images)] * len(self.images);
+        # Use dictionary instead.
+        self.match = {};
+        """
         for i in range(len(self.images) - 1):
             for j in range(i + 1, len(self.images)):
+                self.match[i][j] = ImageMatch();
                 self.match[i][j].image1 = self.images[i];
                 self.match[i][j].image2 = self.images[j];
+        """
         
         for i in range(len(self.images) - 1):
             # build a kd-tree of n - 1 other images' features
@@ -320,14 +343,26 @@ class ImageMosaick(object):
                             if m not in matchedImages:
                                 matchedImages.add(m);
                                 # add each element of a list to a list -> append
-                                self.match[i][m].locs1.append(self.images[i].locations[n]);
-                                self.match[i][m].locs2.append(locations[idx[j]]);          
+                                if i < m:                                    
+                                    if self.match.has_key((i, m)) == False:
+                                        immatch = ImageMatch(self.images[i], self.images[m]);
+                                        self.match[(i, m)] = immatch;                                        
+                                    self.match[(i, m)].locs1.append(self.images[i].locations[n]);
+                                    self.match[(i, m)].locs2.append(locations[idx[j]]);
+                                else:
+                                    if self.match.has_key((m, i)) == False:
+                                        immatch = ImageMatch(self.images[m], self.images[i]);
+                                        self.match[(m, i)] = immatch;
+                                    self.match[(m, i)].locs2.append(self.images[i].locations[n]);
+                                    self.match[(m, i)].locs1.append(locations[idx[j]]);
+                """
                 else:
                     if dist < 0.35:
                         m = imageIds[idx];
                         self.match[i][m].locs1.append(self.images[i].locations[n]);
                         self.match[i][m].locs2.append(locations[idx]);
-                        
+                """
+                     
                 #elapsed = time.clock() - start;
                 #print "Remaining: ", elapsed  
             #print match[n];
@@ -336,27 +371,60 @@ class ImageMosaick(object):
         elapsed = time.clock() - start;
         print "Kdtree: ", elapsed; 
         
+        # print the number of correspondences for each match before RANSAC
+        # remove match that has two low correspondences
+        low = [];
+        for m in self.match:
+            nbCorrs = len(self.match[m].locs1);
+            print m, " has ", nbCorrs, " correspondences."
+            if nbCorrs < 30:
+                low.append(m);
+                print m, " has too low correspondences and is discarded."        
+        for m in low:
+            del self.match[m];
+        
         # recover H for each pair of images
         # and use RANSAC to reject outliers
         start = time.clock();
+        """
         for i in range(len(self.images) - 1):
             for j in range(i + 1, len(self.images)): 
-                self.match[i][j].ransac();
+                inliers, outliers = self.match[i][j].ransac();
+                # remove incorrect matches
+                #if outliers > 1.5 * inliers:
+                #    self.match[i][j] = None;
+        """
+        for m in self.match:
+            inliers, outliers = self.match[m].ransac();
         elapsed = time.clock() - start;
         print "RANSAC: ", elapsed;
-        
-        # find global transform to reference images
-        ref = 0;
+                
+        # find global transform to reference images        
         start = time.clock();
         self.findGlobalTransform(ref); 
         elapsed = time.clock() - start;
         print "Global transform: ", elapsed;
-        
+                
         # perform stitching
         start = time.clock();
         self.stitch(ref);
         elapsed = time.clock() - start;
         print "Stitch: ", elapsed; 
+        
+        # save to disk
+        dir = './mosaick';        
+        try:
+            os.makedirs(dir);
+        except OSError:
+            pass
+
+        for i in range(1000):
+            mosaickFile = dir + "/" + "Mosaick%04d.png" % i;
+            if os.path.exists(mosaickFile) == False: break;    
+             
+        #pylab.imsave(mosaickFile, self.pixels);       
+        pilImage = Image.fromarray(self.pixels);
+        pilImage.save(mosaickFile);
         
     def findGlobalTransform(self, ref = 0):
         """
@@ -380,30 +448,41 @@ class ImageMosaick(object):
             # accumulate H
             A = np.matrix(np.eye(3));
             
-            h = 0; w = 0;
+            #h = 0; w = 0;
+            #xmin = np.inf; xmax = -np.inf;
+            #ymin = np.inf; ymax = -np.inf;
+            if len(path) > 0:
+                src = path[0];
+                imSrc = self.images[src];
+                h, w = imSrc.shape;
+                xmin = 0; xmax = w - 1;
+                ymin = 0; ymax = h - 1;
             for j in range(len(path) - 1):
                 # project path[j] to path[j+1]
                 src = path[j];
                 dest = path[j+1];
                 
                 if dest < src:
-                    H = self.match[dest][src].H;
+                    H = self.match[(dest, src)].H;
                 else:
                     # inverse
-                    H = self.match[src][dest].H.I;
+                    H = self.match[(src, dest)].H.I;
                 
-                imSrc = self.images[src];
-                imDest = self.images[dest];
+                #imSrc = self.images[src];
+                #imDest = self.images[dest];
                     
                 # find xmin and ymin
-                if h == 0:
-                    h, w = imSrc.shape;            
+                #if h == 0:
+                #    h, w = imSrc.shape;            
                     
-                hj, wj = imDest.shape;
+                #hj, wj = imDest.shape;
                 # project to image[j]
-                corners = np.matrix([[0, 0, 1], [w - 1, 0, 1], [w - 1, h - 1, 1], [0, h - 1, 1]]);
-                xmin = 0; xmax = wj - 1;
-                ymin = 0; ymax = hj - 1;
+                #corners = np.matrix([[0, 0, 1], [w - 1, 0, 1], [w - 1, h - 1, 1], [0, h - 1, 1]]);
+                #xmin = 0; xmax = wj - 1;
+                #ymin = 0; ymax = hj - 1;
+                corners = np.matrix([ [xmin, ymin, 1], [xmax, ymin, 1],
+                                      [xmax, ymax, 1], [xmin, ymax, 1]
+                                     ]);
                 for c in corners:
                     p = np.matrix(c.reshape((3, 1)));
                     q = np.ravel(H * p);
@@ -414,8 +493,8 @@ class ImageMosaick(object):
                     ymax = np.amax([ymax, q[1]]);
                 
                 # update the new image size
-                w = np.ceil(xmax - xmin);
-                h = np.ceil(ymax - ymin);
+                #w = np.ceil(xmax - xmin);
+                #h = np.ceil(ymax - ymin);
                 
                 # translate to new origin (xmin, ymin)
                 #T = np.matrix([[1, 0, -xmin], [0, 1, -ymin], [0, 0, 1]]);
@@ -455,7 +534,7 @@ class ImageMosaick(object):
             # neighbors
             for i in range(len(self.images)):
                 if visited[i] == False:
-                    if self.match[cur][i] != None or self.match[i][cur] != None:
+                    if self.match.has_key((cur, i)) or self.match.has_key((i, cur)):
                         if dist[i] > dist[cur] + 1:
                             dist[i] = dist[cur] + 1;                    
                             parent[i] = cur;
@@ -485,17 +564,24 @@ class ImageMosaick(object):
         """
         
         h, w = self.shape;        
+        print "Mosaick size: (width = %d, height = %d)" % (w, h);
         pylab.figure();
         pylab.ion();
         #pixels = np.ndarray(shape=(h, w, 3), dtype=float, order='C');
+        # pixels are stored in uint8 data type so save storage and increase performance.
         if self.images[0].channels > 1:
-            pixels = np.zeros((h, w, self.images[0].channels));
+            pixels = np.zeros((h, w, self.images[0].channels), dtype=np.uint8);
         else:
-            pixels = np.zeros((h, w));
-        for i in range(h):
-            print "Row: ", i
+            pixels = np.zeros((h, w), dtype=np.uint8);
+        for i in range(h):            
+            """
+            if i % 80 == 0:
+                print '.'
+            else:
+                print '.',
+            """ 
             for j in range(w):
-                p = np.matrix([j, i, 1]).reshape((3, 1));
+                p = np.matrix([[j], [i], [1]]);
                 sum = [0] * self.images[0].channels;
                 total = 0;
                 for im in self.images:
@@ -508,7 +594,7 @@ class ImageMosaick(object):
                     sum += color;
                     total += 1;
                 if total > 0:
-                    pixels[i, j] = sum / total;
+                    pixels[i, j] = (sum / total).astype(np.uint8);
             #pylab.imshow(pixels);
             #pylab.draw();
         #return pixels;
@@ -516,9 +602,19 @@ class ImageMosaick(object):
         
     def show(self):
         #[im.show() for im in self.images];
-        pylab.figure();
-        self.match[0][1].show();
         
+        """        
+        print range(len(self.images) - 1)
+        # show each image match pair
+        for i in range(len(self.images) - 1):
+            for j in range(i + 1, len(self.images)):
+                print "Figure (%d, %d)" % (i, j)
+        """
+        for m in self.match: 
+            pylab.figure();
+            self.match[m].show();
+                
+        # show final mosaick
         pylab.figure();
         pylab.imshow(self.pixels);
         pylab.axis('image');
@@ -566,9 +662,23 @@ def main():
     #images  = ["scene.pgm", "basmati.pgm"];
     #images = ["PICT0013.pgm", "PICT0014.pgm"];
     #images = ["PICT0014_800.pgm", "PICT0013_800.pgm"];
-    images = ["PICT0015_800.pgm", "PICT0014_800.pgm"];
-    imo.mosaick([folder + "/" + image for image in images]);
+    #images = ["PICT0015_800.jpg", "PICT0014_800.jpg"];
+    #images = ["PICT0015_800.jpg", "PICT0014_800.jpg", "PICT0013_800.jpg"];
+    #images = ["PICT0016_800.jpg", "PICT0015_800.jpg", "PICT0014_800.jpg"];
+    images = ["PICT0016_800.jpg", "PICT0015_800.jpg", "PICT0014_800.jpg", "PICT0017_800.jpg", "PICT0013_800.jpg",
+              "PICT0018_800.jpg"
+              ];
+    """
+    images = ["PICT0016_800.jpg", "PICT0015_800.jpg", "PICT0014_800.jpg", "PICT0013_800.jpg",
+              "PICT0019_800.jpg", "PICT0018_800.jpg", "PICT0017_800.jpg"
+              ];
+    """
+    imo.mosaick([folder + "/" + image for image in images], ref=1);
     imo.show();
+    
+    """
+    OpenGL to show the process interactively.
+    """
     
 if __name__ == "__main__":
     main();
