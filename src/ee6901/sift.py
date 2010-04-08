@@ -101,11 +101,16 @@ def appendimages(im1,im2):
     rows1 = im1.shape[0]    
     rows2 = im2.shape[0]
     
-    if rows1 < rows2:
-        im1 = concatenate((im1,zeros((rows2-rows1,im1.shape[1]))), axis=0)
+    if len(im1.shape) == 2:    
+        if rows1 < rows2:
+            im1 = concatenate((im1,zeros((rows2-rows1,im1.shape[1]))), axis=0)
+        else:
+            im2 = concatenate((im2,zeros((rows1-rows2,im2.shape[1]))), axis=0)
     else:
-        im2 = concatenate((im2,zeros((rows1-rows2,im2.shape[1]))), axis=0)
-        
+        if rows1 < rows2:
+            im1 = concatenate((im1,zeros((rows2-rows1,im1.shape[1], im1.shape[2]))), axis=0)
+        else:
+            im2 = concatenate((im2,zeros((rows1-rows2,im2.shape[1], im2.shape[2]))), axis=0)
     return concatenate((im1,im2), axis=1)
     
 def plot_matches(im1,im2,locs1,locs2,matchscores):
@@ -133,7 +138,7 @@ def plot_matches_2(im1,im2,locs1,locs2,matchscores):
     
     im3 = appendimages(im1,im2)
 
-    pylab.gray()
+    #pylab.gray()
     pylab.imshow(im3)
     
     cols1 = im1.shape[1] # width
