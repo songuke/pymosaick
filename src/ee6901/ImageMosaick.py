@@ -266,7 +266,7 @@ class ImageMosaick(object):
         self.bundle = []
         self.shape = None
         
-    def mosaick(self, imageFiles, ref=0):
+    def mosaick(self, imageFiles, ref=-1):
         start = time.clock();
         
         manager = ImageManager();
@@ -377,7 +377,7 @@ class ImageMosaick(object):
         for m in self.match:
             nbCorrs = len(self.match[m].locs1);
             print m, " has ", nbCorrs, " correspondences."
-            if nbCorrs < 30:
+            if nbCorrs < 15:
                 low.append(m);
                 print m, " has too low correspondences and is discarded."        
         for m in low:
@@ -399,9 +399,25 @@ class ImageMosaick(object):
         elapsed = time.clock() - start;
         print "RANSAC: ", elapsed;
                 
+        # find the reference image so that the global transform produces
+        # the smallest area
+        if ref == -1:
+            minArea = np.inf;
+            minRef = -1;
+            for i in range(len(self.images)):
+                gh, gw = self.findGlobalTransform(ref=i);
+                area = gh * gw;
+                if area < minArea:
+                    minArea = area;
+                    minRef = i;        
+            ref = minRef;
+            print "Automatic reference image: ", minRef;
+        else:
+            print "Warning: Manual reference image can result in bad mosaick. Out of memory may occur.";
+        
         # find global transform to reference images        
         start = time.clock();
-        self.findGlobalTransform(ref); 
+        self.shape = self.findGlobalTransform(ref); 
         elapsed = time.clock() - start;
         print "Global transform: ", elapsed;
                 
@@ -518,7 +534,8 @@ class ImageMosaick(object):
         for im in self.images:
             im.H = T * im.H; 
         
-        self.shape = (gh, gw);
+        #self.shape = (gh, gw);
+        return (gh, gw);
     
     def findPath(self, src, dest):
         # dijkstra shortest path from src to dest
@@ -665,16 +682,20 @@ def main():
     #images = ["PICT0015_800.jpg", "PICT0014_800.jpg"];
     #images = ["PICT0015_800.jpg", "PICT0014_800.jpg", "PICT0013_800.jpg"];
     #images = ["PICT0016_800.jpg", "PICT0015_800.jpg", "PICT0014_800.jpg"];
+    
+    # this test runs for 3 hours!
+    """
     images = ["PICT0016_800.jpg", "PICT0015_800.jpg", "PICT0014_800.jpg", "PICT0017_800.jpg", "PICT0013_800.jpg",
               "PICT0018_800.jpg"
               ];
     """
+    # this test is out of memory!
     images = ["PICT0016_800.jpg", "PICT0015_800.jpg", "PICT0014_800.jpg", "PICT0013_800.jpg",
               "PICT0019_800.jpg", "PICT0018_800.jpg", "PICT0017_800.jpg"
               ];
-    """
-    imo.mosaick([folder + "/" + image for image in images], ref=1);
-    imo.show();
+    
+    imo.mosaick([folder + "/" + image for image in images]);
+    #imo.show();
     
     """
     OpenGL to show the process interactively.
