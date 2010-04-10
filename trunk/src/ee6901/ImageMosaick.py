@@ -14,6 +14,94 @@ import time
 import heapq
 import Image
 
+class Liner(object):
+    def __init__(self):
+        pass
+    def line(self, raster, src, dest, val):
+        x0 = int(src[0]);
+        y0 = int(src[1]);
+        x1 = int(dest[0]);
+        y1 = int(dest[1]);
+        #height, width = np.shape(image);
+        
+        # Another Bresenham by me. This time ports to Python.    
+        # now x0 < x1
+        Dx = x1 - x0; # Dx >= 0 now
+        Dy = y1 - y0;
+        steep = (np.abs(Dy) >= np.abs(Dx));
+        if steep:
+            #SWAP(x0, y0);
+            #SWAP(x1, y1);
+    
+            x0, y0 = y0, x0;
+            x1, y1 = y1, x1;
+            
+            # recompute Dx, Dy after swap
+            Dx = x1 - x0;
+            Dy = y1 - y0;
+            
+        xstep = 1;
+        if Dx < 0 :
+            xstep = -1;
+            Dx = -Dx;
+            
+        ystep = 1;
+        if Dy < 0: # y1 < y0, decreasing
+            ystep = -1;        
+            Dy = -Dy; 
+            
+        TwoDy = 2*Dy; 
+        TwoDyTwoDx = TwoDy - 2*Dx; # 2*Dy - 2*Dx
+        E = TwoDy - Dx; #2*Dy - Dx
+    
+        y = y0;
+        #int xDraw, yDraw;
+        
+        # FIXME: sometimes infinite loop here!? Cannot use <= or >= as don't know the line goes up or down.
+        x = x0;
+        
+        #xDrawPrev = np.inf;
+        #yDrawPrev = np.inf;
+        while x != x1:
+            if steep:            
+                xDraw = y;
+                yDraw = x;
+            else:           
+                xDraw = x;
+                yDraw = y;
+                
+            # plot
+            # avoid out of bound when stretching triangle
+            #if (xDraw < 0 || xDraw >= width || yDraw < 0 || yDraw >= height) {}
+            #else {
+                #int index = yDraw * width + xDraw;    
+                #image->setPixel(Float2(xDraw, yDraw), color);
+            
+            # trick for overlapping images -> mask values accumulate.
+            #image[xDraw, yDraw] += val;
+            
+            # record only the beginning and end position of a line segment
+            #if yDraw != yDrawPrev:
+                #if yDrawPrev != np.inf:
+                    # record last point of the previous segment
+                    #raster.append((xDrawPrev, yDrawPrev, val));
+                # record first point of the new segment
+            raster.append((xDraw, yDraw, val)),
+            
+            #xDrawPrev = xDraw;
+            #yDrawPrev = yDraw;
+            
+            
+            # next
+            if E > 0:
+                E += TwoDyTwoDx; #E += 2*Dy - 2*Dx;
+                y = y + ystep;
+            else:
+                E += TwoDy; #E += 2*Dy;
+                        
+            x += xstep;
+        
+
 class Feature(object):
     def __init__(self, imageId, descriptor, location):
         self.imageId    = imageId;
@@ -41,6 +129,19 @@ class ImageObject(object):
         else:
             self.shape = (shape[0], shape[1]);
             self.channels = shape[2];
+        #self.center = (self.shape[1] * 0.5, self.shape[0] * 0.5);
+        
+        # precompute center weight for every pixel
+        h, w = self.shape;
+        h2, w2 = 1.0 / h, 1.0 / w;
+        weight = np.zeros((h, w));
+        cx = 0.5; cy = 0.5;
+        sigma2 = 0.25**2;
+        for i in range(h):
+            for j in range(w):
+                weight[i, j] = np.exp(-((i * h2 - cy)**2 + (j * w2 - cx)**2) / sigma2); 
+                #weight[i, j] = (0.5 - np.abs(i * h2 - cy)) + (0.5 - np.abs(j * w2 - cx)); # abs is too slow.
+        self.weight = weight;
         
     def interpolate(self, x, y):
         h, w = self.shape;
@@ -50,6 +151,7 @@ class ImageObject(object):
         y0 = np.floor(y);
         y1 = y0 + 1;
         
+        """
         if x0 < 0:  x0 = 0;
         if x0 >= w: x0 = w - 1;
         if x1 < 0:  x1 = 0;
@@ -58,6 +160,7 @@ class ImageObject(object):
         if y0 >= h: y0 = h - 1;
         if y1 < 0:  y1 = 0;
         if y1 >= h: y1 = h - 1;
+        """
         
         s = x - x0;
         t = y - y0;
@@ -457,6 +560,15 @@ class ImageMosaick(object):
         gymin = 0; gymax = gh - 1;
         
         for im in self.images:
+            h, w = im.shape;
+            xmin = 0; xmax = w - 1;
+            ymin = 0; ymax = h - 1;
+                        
+            im.corners = [np.matrix([xmin, ymin, 1]).reshape(3, 1), 
+                       np.matrix([xmax, ymin, 1]).reshape(3, 1), 
+                       np.matrix([xmax, ymax, 1]).reshape(3, 1), 
+                       np.matrix([xmin, ymax, 1]).reshape(3, 1)
+                       ];
             if im.id == ref: continue;
             
             # find a path to imageRef
@@ -467,12 +579,11 @@ class ImageMosaick(object):
             #h = 0; w = 0;
             #xmin = np.inf; xmax = -np.inf;
             #ymin = np.inf; ymax = -np.inf;
-            if len(path) > 0:
-                src = path[0];
-                imSrc = self.images[src];
-                h, w = imSrc.shape;
-                xmin = 0; xmax = w - 1;
-                ymin = 0; ymax = h - 1;
+            #if len(path) > 0:
+                #src = path[0];
+                #imSrc = self.images[src];
+                #h, w = imSrc.shape;
+                
             for j in range(len(path) - 1):
                 # project path[j] to path[j+1]
                 src = path[j];
@@ -496,10 +607,9 @@ class ImageMosaick(object):
                 #corners = np.matrix([[0, 0, 1], [w - 1, 0, 1], [w - 1, h - 1, 1], [0, h - 1, 1]]);
                 #xmin = 0; xmax = wj - 1;
                 #ymin = 0; ymax = hj - 1;
-                corners = np.matrix([ [xmin, ymin, 1], [xmax, ymin, 1],
-                                      [xmax, ymax, 1], [xmin, ymax, 1]
-                                     ]);
-                for c in corners:
+                
+                for c in range(len(im.corners)):
+                    """
                     p = np.matrix(c.reshape((3, 1)));
                     q = np.ravel(H * p);
                     q /= q[2];
@@ -507,6 +617,8 @@ class ImageMosaick(object):
                     ymin = np.amin([ymin, q[1]]);
                     xmax = np.amax([xmax, q[0]]);
                     ymax = np.amax([ymax, q[1]]);
+                    """
+                    im.corners[c] = H * im.corners[c];
                 
                 # update the new image size
                 #w = np.ceil(xmax - xmin);
@@ -521,11 +633,23 @@ class ImageMosaick(object):
             im.H = A;
             #im.shape = (h, w);
             
+            # save the four corners
+            #if len(path) > 0:
+            for c in im.corners:
+                #c = np.ravel(c);
+                c /= c[2];
+                gxmin = np.amin([gxmin, c[0]]);
+                gymin = np.amin([gymin, c[1]]);
+                gxmax = np.amax([gxmax, c[0]]);
+                gymax = np.amax([gymax, c[1]]);
+                    
             # find global image size
+            """
             gxmin = np.amin([gxmin, xmin]);
             gymin = np.amin([gymin, ymin]);
             gxmax = np.amax([gxmax, xmax]);
             gymax = np.amax([gymax, ymax]);
+            """
         
         # return the global size
         gw = np.ceil(gxmax - gxmin);
@@ -533,10 +657,12 @@ class ImageMosaick(object):
         T = np.matrix([[1, 0, -gxmin], [0, 1, -gymin], [0, 0, 1]]);
         for im in self.images:
             im.H = T * im.H; 
+            for c in im.corners:
+                c += np.matrix([[-gxmin], [-gymin], [0]]);
         
         #self.shape = (gh, gw);
-        return (gh, gw);
-    
+        return (int(gh), int(gw));
+
     def findPath(self, src, dest):
         # dijkstra shortest path from src to dest
         visited = [False]   * len(self.images);
@@ -582,39 +708,101 @@ class ImageMosaick(object):
         
         h, w = self.shape;        
         print "Mosaick size: (width = %d, height = %d)" % (w, h);
-        pylab.figure();
-        pylab.ion();
+        
+        # draw border lines of images to mask
+        
+        liner = Liner();
+        raster = [];
+        for im in self.images:
+            val = im.id;
+            for c in range(len(im.corners)):
+                d = (c + 1) % len(im.corners);
+                liner.line(raster,  (im.corners[c][0], im.corners[c][1]), 
+                                    (im.corners[d][0], im.corners[d][1]), val);
+        # only keep the min and max x of every (y, val) pair
+        rasterMinMax = {};
+        for x, y, v in raster:
+            if (y, v) not in rasterMinMax:
+                rasterMinMax[(y, v)] = [np.inf, -np.inf]; # [min, max]
+            mm = rasterMinMax[(y, v)];
+            if x < mm[0]:
+                mm[0] = x;
+            if x > mm[1]:
+                mm[1] = x;
+            
+        # for every (x, y) show a list of images at this position
+        rasterDictY = {};
+        for y, v in rasterMinMax:
+            if y not in rasterDictY:
+                rasterDictY[y] = {};
+            rasterDictX = rasterDictY[y];
+            for x in rasterMinMax[(y, v)]:      
+                if x not in rasterDictX: 
+                    rasterDictX[x] = set(); # use 
+                l = rasterDictX[x];
+                if v not in l:
+                    l.add(v);
+
+        #pylab.figure();
+        #pylab.ion();
         #pixels = np.ndarray(shape=(h, w, 3), dtype=float, order='C');
         # pixels are stored in uint8 data type so save storage and increase performance.
         if self.images[0].channels > 1:
             pixels = np.zeros((h, w, self.images[0].channels), dtype=np.uint8);
         else:
             pixels = np.zeros((h, w), dtype=np.uint8);
-        for i in range(h):            
-            """
-            if i % 80 == 0:
-                print '.'
-            else:
-                print '.',
-            """ 
+        for i in range(h):
+            # keep track of the current overlap images
+            overlap = [];
             for j in range(w):
+                # update overlap images
+                rasterList = [];
+                if i in rasterDictY:
+                    if j in rasterDictY[i]:
+                        rasterList = rasterDictY[i][j];
+                
+                removeList = [];
+                for r in rasterList:
+                    try:
+                        index = overlap.index(r);
+                        # current image is already found in overlap
+                        # this means we are going out of this image. After this loop remove this image.
+                        removeList.append(r);
+                    except ValueError:
+                        # this image is not found in overlap.
+                        # Add this image and start using it.
+                        overlap.append(r);
+                    
                 p = np.matrix([[j], [i], [1]]);
                 sum = [0] * self.images[0].channels;
                 total = 0;
-                for im in self.images:
+                #for im in self.images:
+                for o in overlap:
+                    im = self.images[o];
+                    
                     # take the inverse homography to the current image's domain
                     q = np.ravel(im.H.I * p);
                     q /= q[2];
                     qh, qw = im.shape;
                     if q[0] < 0 or q[0] >= qw or q[1] < 0 or q[1] >= qh: continue;
-                    color = im.interpolate(q[0], q[1]);
-                    sum += color;
-                    total += 1;
+                    # no interpolation at boundary
+                    if (qw - 1 <= q[0] and q[0] < qw) or (qh - 1 <= q[1] and q[1] < qh): 
+                        color = im.pixels[np.floor(q[1]), np.floor(q[0])];
+                    else:
+                        color = im.interpolate(q[0], q[1]);
+                    
+                    # weight
+                    #w = (q[1] - im.center[0])**2 + (q[0] - im.center[1])**2;
+                    we = im.weight[np.floor(q[1]), np.floor(q[0])];
+                    sum += we * color;
+                    total += we;
                 if total > 0:
                     pixels[i, j] = (sum / total).astype(np.uint8);
-            #pylab.imshow(pixels);
-            #pylab.draw();
-        #return pixels;
+                    
+                # clean up any complete overlap image
+                for r in removeList:
+                    overlap.remove(r);
+                    
         self.pixels = pixels;
         
     def show(self):
@@ -677,7 +865,7 @@ def main():
     imo = ImageMosaick();
     folder  = "./images";
     #images  = ["scene.pgm", "basmati.pgm"];
-    #images = ["PICT0013.pgm", "PICT0014.pgm"];
+    #images = ["PICT0013_800.jpg", "PICT0014_800.jpg"];
     #images = ["PICT0014_800.pgm", "PICT0013_800.pgm"];
     #images = ["PICT0015_800.jpg", "PICT0014_800.jpg"];
     #images = ["PICT0015_800.jpg", "PICT0014_800.jpg", "PICT0013_800.jpg"];
@@ -690,6 +878,7 @@ def main():
               ];
     """
     # this test is out of memory!
+    
     images = ["PICT0016_800.jpg", "PICT0015_800.jpg", "PICT0014_800.jpg", "PICT0013_800.jpg",
               "PICT0019_800.jpg", "PICT0018_800.jpg", "PICT0017_800.jpg"
               ];
