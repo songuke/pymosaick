@@ -1,0 +1,68 @@
+C:\Workspace\PyMosaickGoogle
+siftWin32 <./images/PICT0016_800.pgm >./images/PICT0016_800.key
+Finding keypoints...
+2408 keypoints found.
+processed ./images/PICT0016_800.pgm
+Total images:  1
+Total images:  2
+Total images:  3
+Total images:  4
+C:\Workspace\PyMosaickGoogle
+siftWin32 <./images/PICT0019_800.pgm >./images/PICT0019_800.key
+Finding keypoints...
+2862 keypoints found.
+processed ./images/PICT0019_800.pgm
+Total images:  5
+C:\Workspace\PyMosaickGoogle
+siftWin32 <./images/PICT0018_800.pgm >./images/PICT0018_800.key
+Finding keypoints...
+2883 keypoints found.
+processed ./images/PICT0018_800.pgm
+Total images:  6
+C:\Workspace\PyMosaickGoogle
+siftWin32 <./images/PICT0017_800.pgm >./images/PICT0017_800.key
+Finding keypoints...
+2795 keypoints found.
+processed ./images/PICT0017_800.pgm
+Total images:  7
+SIFT:  69.7931048288
+Kdtree:  414.121181575
+(0, 1)  has  36  correspondences.
+(1, 2)  has  56  correspondences.
+(5, 6)  has  42  correspondences.
+(1, 3)  has  1  correspondences.
+(1, 3)  has too low correspondences and is discarded.
+(4, 5)  has  55  correspondences.
+(0, 6)  has  45  correspondences.
+(2, 3)  has  41  correspondences.
+(0, 2)  has  5  correspondences.
+(0, 2)  has too low correspondences and is discarded.
+Best homography:  [[  2.33443908e-03   2.91280970e-05   9.96562657e-01]
+ [ -1.36670926e-04   2.73614342e-03  -8.27172513e-02]
+ [ -5.99323870e-07   1.29405814e-07   2.78768209e-03]]
+Inliers/Outliers:  31.0 / 5.0
+Best homography:  [[ -2.46009689e-03   7.97874853e-05  -9.99612612e-01]
+ [  1.17191013e-04  -2.77522896e-03  -2.74245140e-02]
+ [  5.88134367e-07   3.50445979e-08  -2.95764630e-03]]
+Inliers/Outliers:  47.0 / 9.0
+Best homography:  [[  1.54389193e-03  -7.00090279e-05   9.95864898e-01]
+ [ -1.77823754e-04   1.95992405e-03   9.07875713e-02]
+ [ -6.73128827e-07  -4.51248873e-08   2.11196356e-03]]
+Inliers/Outliers:  33.0 / 9.0
+Best homography:  [[ -2.32425265e-03  -1.66107647e-05  -9.99931802e-01]
+ [  1.10668574e-04  -2.74731052e-03   1.07588543e-02]
+ [  6.09477728e-07  -1.54051122e-07  -2.77048456e-03]]
+Inliers/Outliers:  43.0 / 12.0
+Best homography:  [[ -2.45081362e-03  -8.60468326e-05   9.98881465e-01]
+ [ -9.37307047e-05  -2.30631169e-03   4.71225183e-02]
+ [ -5.97967292e-07   6.18611263e-08  -1.98610892e-03]]
+Inliers/Outliers:  37.0 / 8.0
+Best homography:  [[ -1.82105559e-03   5.27575775e-05  -9.99398261e-01]
+ [  1.12912677e-04  -2.19473224e-03   3.44908350e-02]
+ [  5.94398789e-07  -1.15878921e-11  -2.31270545e-03]]
+Inliers/Outliers:  37.0 / 4.0
+RANSAC:  7.59190627552
+Automatic reference image:  0
+Global transform:  0.0145559137506
+Mosaick size: (width = 7940, height = 2341)
+Stitch:  4480.05739064
