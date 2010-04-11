@@ -1,0 +1,52 @@
+HDB19.jpg
+HDB18.jpg
+HDB17.jpg
+HDB16.jpg
+C:\Workspace\PyMosaickGoogle
+siftWin32 <./images/temple/HDB19.pgm >./images/temple/HDB19.key
+Finding keypoints...
+1233 keypoints found.
+processed ./images/temple/HDB19.pgm
+Total images:  1
+C:\Workspace\PyMosaickGoogle
+siftWin32 <./images/temple/HDB18.pgm >./images/temple/HDB18.key
+Finding keypoints...
+3150 keypoints found.
+processed ./images/temple/HDB18.pgm
+Total images:  2
+C:\Workspace\PyMosaickGoogle
+siftWin32 <./images/temple/HDB17.pgm >./images/temple/HDB17.key
+Finding keypoints...
+3785 keypoints found.
+processed ./images/temple/HDB17.pgm
+Total images:  3
+C:\Workspace\PyMosaickGoogle
+siftWin32 <./images/temple/HDB16.pgm >./images/temple/HDB16.key
+Finding keypoints...
+2981 keypoints found.
+processed ./images/temple/HDB16.pgm
+Total images:  4
+SIFT:  53.7243045266
+Kdtree:  158.177365041
+(0, 1)  has  29  correspondences.
+(1, 2)  has  231  correspondences.
+(1, 3)  has  3  correspondences.
+(1, 3)  has too low correspondences and is discarded.
+(2, 3)  has  68  correspondences.
+Best homography:  [[  1.90409541e-03  -1.12226943e-05  -9.48391995e-01]
+ [  2.59064138e-04   1.76394488e-03   3.17085764e-01]
+ [  5.76800413e-07  -1.97247484e-07   1.56139334e-03]]
+Inliers/Outliers:  26.0 / 3.0
+Best homography:  [[ -2.82788636e-03  -1.06997088e-04   9.95852908e-01]
+ [ -9.46582446e-05  -2.60810513e-03  -9.08691797e-02]
+ [ -7.65898341e-07   8.15616998e-08  -2.22669167e-03]]
+Inliers/Outliers:  153.0 / 78.0
+Best homography:  [[ -2.55563477e-03  -2.08497188e-04   9.95279849e-01]
+ [ -3.27214519e-05  -2.43554472e-03   9.69622437e-02]
+ [ -7.37052149e-07  -9.40595845e-08  -1.95907809e-03]]
+Inliers/Outliers:  46.0 / 22.0
+RANSAC:  5.70850653553
+Automatic reference image:  1
+Global transform:  0.0117555940953
+Mosaick size: (width = 2458, height = 1219)
+Stitch:  957.535815709
