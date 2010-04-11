@@ -13,6 +13,7 @@ import KdtreeCustom
 import time
 import heapq
 import Image
+import sys
 
 class Liner(object):
     def __init__(self):
@@ -139,8 +140,9 @@ class ImageObject(object):
         sigma2 = 0.25**2;
         for i in range(h):
             for j in range(w):
-                weight[i, j] = np.exp(-((i * h2 - cy)**2 + (j * w2 - cx)**2) / sigma2); 
-                #weight[i, j] = (0.5 - np.abs(i * h2 - cy)) + (0.5 - np.abs(j * w2 - cx)); # abs is too slow.
+                #weight[i, j] = np.exp(-((i * h2 - cy)**2 + (j * w2 - cx)**2) / sigma2); 
+                #weight[i, j] = (0.5 - np.abs(i * h2 - cy)) * (0.5 - np.abs(j * w2 - cx)); # abs is too slow.
+                weight[i, j] = 0.25 - np.abs((i * h2 - cy) * (j * w2 - cx));
         self.weight = weight;
         
     def interpolate(self, x, y):
@@ -862,8 +864,13 @@ class ImageMosaick(object):
         
         
 def main():
-    imo = ImageMosaick();
     folder  = "./images";
+    if len(sys.argv) < 2:
+        print "Usage: mosaick.exe <image set file>"
+        return;
+    
+    file = sys.argv[1];
+    
     #images  = ["scene.pgm", "basmati.pgm"];
     #images = ["PICT0013_800.jpg", "PICT0014_800.jpg"];
     #images = ["PICT0014_800.pgm", "PICT0013_800.pgm"];
@@ -878,12 +885,47 @@ def main():
               ];
     """
     # this test is out of memory!
-    
+    """
     images = ["PICT0016_800.jpg", "PICT0015_800.jpg", "PICT0014_800.jpg", "PICT0013_800.jpg",
               "PICT0019_800.jpg", "PICT0018_800.jpg", "PICT0017_800.jpg"
               ];
+    """
     
-    imo.mosaick([folder + "/" + image for image in images]);
+    # image set folder
+    partSetFolder, partDot, partExt = file.rpartition('.');
+    partPath, partSlash, setFolder = partSetFolder.rpartition('/');
+    
+    # read image list from file
+    f = open(file, 'r');
+    images = f.readlines();
+    f.close();
+    
+    # remove any empty lines
+    removeList = [];
+    for i in range(len(images)):
+        # check for existence
+        # remove empty lines
+        images[i] = images[i].strip();
+        if images[i] == "":
+            removeList.append(i);
+    
+    removeList.reverse();
+    for r in removeList:
+        del images[r];
+    
+    # full path
+    fullImages = [folder + "/" + setFolder + "/" + image for image in images];    
+    # print out image list
+    
+    for i in range(len(images)):
+        if not os.path.exists(fullImages[i]):
+            print images[i], " not found!"
+        else:
+            print images[i];
+    
+    # start mosaicking
+    imo = ImageMosaick();
+    imo.mosaick(fullImages);
     #imo.show();
     
     """
@@ -892,4 +934,4 @@ def main():
     
 if __name__ == "__main__":
     main();
-        
+    
