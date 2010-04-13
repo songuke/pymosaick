@@ -140,9 +140,9 @@ class ImageObject(object):
         sigma2 = 0.25**2;
         for i in range(h):
             for j in range(w):
-                #weight[i, j] = np.exp(-((i * h2 - cy)**2 + (j * w2 - cx)**2) / sigma2); 
+                weight[i, j] = np.exp(-((i * h2 - cy)**2 + (j * w2 - cx)**2) / sigma2); 
                 #weight[i, j] = (0.5 - np.abs(i * h2 - cy)) * (0.5 - np.abs(j * w2 - cx)); # abs is too slow.
-                weight[i, j] = 0.25 - np.abs((i * h2 - cy) * (j * w2 - cx));
+                #weight[i, j] = 0.25 - np.abs((i * h2 - cy) * (j * w2 - cx));
         self.weight = weight;
         
     def interpolate(self, x, y):
@@ -381,7 +381,119 @@ class ImageMosaick(object):
         print "SIFT: ", elapsed; 
         
         start = time.clock();
+        self.findCorrespondenceKdTree();
+        #self.findCorrespondenceBruteForce();
+        elapsed = time.clock() - start;
+        print "Kdtree: ", elapsed; 
         
+        # print the number of correspondences for each match before RANSAC
+        # remove match that has two low correspondences
+        low = [];
+        for m in self.match:
+            nbCorrs = len(self.match[m].locs1);
+            print m, " has ", nbCorrs, " correspondences."
+            if nbCorrs < 15:
+                low.append(m);
+                print m, " has too low correspondences and is discarded."        
+        for m in low:
+            del self.match[m];
+        
+        # recover H for each pair of images
+        # and use RANSAC to reject outliers
+        start = time.clock();
+        """
+        for i in range(len(self.images) - 1):
+            for j in range(i + 1, len(self.images)): 
+                inliers, outliers = self.match[i][j].ransac();
+                # remove incorrect matches
+                #if outliers > 1.5 * inliers:
+                #    self.match[i][j] = None;
+        """
+        for m in self.match:
+            inliers, outliers = self.match[m].ransac();
+        elapsed = time.clock() - start;
+        print "RANSAC: ", elapsed;
+                
+        # find the reference image so that the global transform produces
+        # the smallest area
+        if ref == -1:
+            minArea = np.inf;
+            minRef = -1;
+            for i in range(len(self.images)):
+                gh, gw = self.findGlobalTransform(ref=i);
+                area = gh * gw;
+                if area < minArea:
+                    minArea = area;
+                    minRef = i;        
+            ref = minRef;
+            print "Automatic reference image: ", minRef;
+        else:
+            print "Warning: Manual reference image can result in bad mosaick. Out of memory may occur.";
+        
+        # find global transform to reference images        
+        start = time.clock();
+        self.shape = self.findGlobalTransform(ref); 
+        elapsed = time.clock() - start;
+        print "Global transform: ", elapsed;
+                
+        # perform stitching
+        start = time.clock();
+        self.stitch(ref);
+        elapsed = time.clock() - start;
+        print "Stitch: ", elapsed; 
+        
+        # save to disk
+        dir = './mosaick';        
+        try:
+            os.makedirs(dir);
+        except OSError:
+            pass
+
+        for i in range(1000):
+            mosaickFile = dir + "/" + "Mosaick%04d.png" % i;
+            if os.path.exists(mosaickFile) == False: break;    
+             
+        #pylab.imsave(mosaickFile, self.pixels);       
+        pilImage = Image.fromarray(self.pixels);
+        pilImage.save(mosaickFile);
+        
+    def findCorrespondenceBruteForce(self):
+        """
+        Find correspondence using brute-force scan.
+        """
+        self.match = {};
+        distRatio = 0.8;
+        for i in range(len(self.images) - 1):
+            im = self.images[i];
+            for j in range(i + 1, len(self.images)):
+                jm = self.images[j];
+                # for every feature in image[i]
+                for m in range(len(im.descriptors)):
+                    f = im.descriptors[m];
+                    nearestDist = np.inf;
+                    secondNearestDist = np.inf;
+                    nearestIndex = -1;
+                    # compare with every feature in image[j]
+                    for n in range(len(jm.descriptors)):
+                        g = jm.descriptors[n];
+                        dist = KdtreeCustom.minkowski_distance(f, g, 2);
+                        if dist < nearestDist:
+                            nearestDist = dist;
+                            nearestIndex = n;
+                        if dist > nearestDist and dist < secondNearestDist:
+                            secondNearestDist = dist;
+                    if nearestDist < distRatio * secondNearestDist:
+                        # match
+                        if (i, j) not in self.match:     
+                            self.match[(i, j)] = ImageMatch(im, jm);
+                        immatch = self.match[(i, j)];                                   
+                        immatch.locs1.append(im.locations[m]);
+                        immatch.locs2.append(jm.locations[nearestIndex]);
+                        
+    def findCorrespondenceKdTree(self):
+        """
+        Find coresspondence using KdTree.
+        """
         # Note: cannot use below statement to create a 2d list.
         # The rows are duplicated! Objects from the second row are the same as 
         # the first row!
@@ -395,7 +507,6 @@ class ImageMosaick(object):
                 self.match[i][j].image1 = self.images[i];
                 self.match[i][j].image2 = self.images[j];
         """
-        
         for i in range(len(self.images) - 1):
             # build a kd-tree of n - 1 other images' features
             # feature array
@@ -472,80 +583,6 @@ class ImageMosaick(object):
                 #print "Remaining: ", elapsed  
             #print match[n];
             #print [imageIds[match[n][j]] for j in range(knearest)];
-        
-        elapsed = time.clock() - start;
-        print "Kdtree: ", elapsed; 
-        
-        # print the number of correspondences for each match before RANSAC
-        # remove match that has two low correspondences
-        low = [];
-        for m in self.match:
-            nbCorrs = len(self.match[m].locs1);
-            print m, " has ", nbCorrs, " correspondences."
-            if nbCorrs < 15:
-                low.append(m);
-                print m, " has too low correspondences and is discarded."        
-        for m in low:
-            del self.match[m];
-        
-        # recover H for each pair of images
-        # and use RANSAC to reject outliers
-        start = time.clock();
-        """
-        for i in range(len(self.images) - 1):
-            for j in range(i + 1, len(self.images)): 
-                inliers, outliers = self.match[i][j].ransac();
-                # remove incorrect matches
-                #if outliers > 1.5 * inliers:
-                #    self.match[i][j] = None;
-        """
-        for m in self.match:
-            inliers, outliers = self.match[m].ransac();
-        elapsed = time.clock() - start;
-        print "RANSAC: ", elapsed;
-                
-        # find the reference image so that the global transform produces
-        # the smallest area
-        if ref == -1:
-            minArea = np.inf;
-            minRef = -1;
-            for i in range(len(self.images)):
-                gh, gw = self.findGlobalTransform(ref=i);
-                area = gh * gw;
-                if area < minArea:
-                    minArea = area;
-                    minRef = i;        
-            ref = minRef;
-            print "Automatic reference image: ", minRef;
-        else:
-            print "Warning: Manual reference image can result in bad mosaick. Out of memory may occur.";
-        
-        # find global transform to reference images        
-        start = time.clock();
-        self.shape = self.findGlobalTransform(ref); 
-        elapsed = time.clock() - start;
-        print "Global transform: ", elapsed;
-                
-        # perform stitching
-        start = time.clock();
-        self.stitch(ref);
-        elapsed = time.clock() - start;
-        print "Stitch: ", elapsed; 
-        
-        # save to disk
-        dir = './mosaick';        
-        try:
-            os.makedirs(dir);
-        except OSError:
-            pass
-
-        for i in range(1000):
-            mosaickFile = dir + "/" + "Mosaick%04d.png" % i;
-            if os.path.exists(mosaickFile) == False: break;    
-             
-        #pylab.imsave(mosaickFile, self.pixels);       
-        pilImage = Image.fromarray(self.pixels);
-        pilImage.save(mosaickFile);
         
     def findGlobalTransform(self, ref = 0):
         """
