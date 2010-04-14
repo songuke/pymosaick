@@ -1,7 +1,7 @@
 # Copyright Anne M. Archibald 2008
 # Released under the scipy license
 
-# Adapted to use with ImageMosaick
+# To use with ImageMosaick
 # Hua Binh Son, 2010
 
 import numpy as np

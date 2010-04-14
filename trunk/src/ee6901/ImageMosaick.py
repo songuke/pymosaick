@@ -14,6 +14,7 @@ import time
 import heapq
 import Image
 import sys
+import cProfile
 
 class Liner(object):
     def __init__(self):
@@ -146,7 +147,7 @@ class ImageObject(object):
         self.weight = weight;
         
     def interpolate(self, x, y):
-        h, w = self.shape;
+        #h, w = self.shape;
         
         x0 = np.floor(x);
         x1 = x0 + 1;
@@ -748,8 +749,11 @@ class ImageMosaick(object):
         h, w = self.shape;        
         print "Mosaick size: (width = %d, height = %d)" % (w, h);
         
-        # draw border lines of images to mask
+        # precompute all inverse matrices
+        for im in self.images:
+            im.HI = np.array(im.H.I);
         
+        # draw border lines of images to mask        
         liner = Liner();
         raster = [];
         for im in self.images:
@@ -790,20 +794,33 @@ class ImageMosaick(object):
             pixels = np.zeros((h, w, self.images[0].channels), dtype=np.uint8);
         else:
             pixels = np.zeros((h, w), dtype=np.uint8);
+            
+        # stitching
+        zero = [0] * self.images[0].channels;
         for i in range(h):
             # keep track of the current overlap images
             overlap = [];
+            
+            rasterDictY_i = None;
+            if i in rasterDictY:
+                rasterDictY_i = rasterDictY[i];
+                
             for j in range(w):
                 # update overlap images
                 rasterList = [];
-                if i in rasterDictY:
-                    if j in rasterDictY[i]:
-                        rasterList = rasterDictY[i][j];
+                #if i in rasterDictY:
+                if not rasterDictY_i is None:
+                    #if j in rasterDictY[i]:
+                    if j in rasterDictY_i:
+                        #rasterList = rasterDictY[i][j];
+                        rasterList = rasterDictY_i[j];
                 
                 removeList = [];
                 for r in rasterList:
+                    """
                     try:
-                        index = overlap.index(r);
+                        #index = overlap.index(r);
+                        overlap.index(r);
                         # current image is already found in overlap
                         # this means we are going out of this image. After this loop remove this image.
                         removeList.append(r);
@@ -811,16 +828,33 @@ class ImageMosaick(object):
                         # this image is not found in overlap.
                         # Add this image and start using it.
                         overlap.append(r);
+                    """
+                    found = False;
+                    for o in overlap:
+                        if o == r:
+                            removeList.append(r);
+                            found = True;
+                            break;
+                    if not found:
+                        overlap.append(r);                        
                     
-                p = np.matrix([[j], [i], [1]]);
-                sum = [0] * self.images[0].channels;
+                #p = np.matrix([[j], [i], [1]]);
+                p = [j, i, 1];
+                sum = zero;
                 total = 0;
                 #for im in self.images:
                 for o in overlap:
                     im = self.images[o];
                     
                     # take the inverse homography to the current image's domain
-                    q = np.ravel(im.H.I * p);
+                    # Note: inverse matrix H every time causes a lot of 
+                    # performance penalty.
+                    #q = np.ravel(im.H.I * p);
+                    #q = np.ravel(im.HI * p);
+                    # Note: doing ravel and np.matrix multiplication is inconvenient
+                    # and incurred 3 times performance penalty as compared to 
+                    # np.dot and list.
+                    q = np.dot(im.HI, p);
                     q /= q[2];
                     qh, qw = im.shape;
                     if q[0] < 0 or q[0] >= qw or q[1] < 0 or q[1] >= qh: continue;
@@ -865,7 +899,7 @@ class ImageMosaick(object):
         
         pylab.show();
         
-
+    '''
     def refinement(self):
         """
         Refine homography matrix H using Levenberg-Marquardt non-linear optimization.
@@ -898,7 +932,7 @@ class ImageMosaick(object):
         stack = []
         
         # Use the residual in the paper but refine all H. Then render with new H and compare.
-        
+    '''
         
 def main():
     folder  = "./images";
@@ -907,26 +941,6 @@ def main():
         return;
     
     file = sys.argv[1];
-    
-    #images  = ["scene.pgm", "basmati.pgm"];
-    #images = ["PICT0013_800.jpg", "PICT0014_800.jpg"];
-    #images = ["PICT0014_800.pgm", "PICT0013_800.pgm"];
-    #images = ["PICT0015_800.jpg", "PICT0014_800.jpg"];
-    #images = ["PICT0015_800.jpg", "PICT0014_800.jpg", "PICT0013_800.jpg"];
-    #images = ["PICT0016_800.jpg", "PICT0015_800.jpg", "PICT0014_800.jpg"];
-    
-    # this test runs for 3 hours!
-    """
-    images = ["PICT0016_800.jpg", "PICT0015_800.jpg", "PICT0014_800.jpg", "PICT0017_800.jpg", "PICT0013_800.jpg",
-              "PICT0018_800.jpg"
-              ];
-    """
-    # this test is out of memory!
-    """
-    images = ["PICT0016_800.jpg", "PICT0015_800.jpg", "PICT0014_800.jpg", "PICT0013_800.jpg",
-              "PICT0019_800.jpg", "PICT0018_800.jpg", "PICT0017_800.jpg"
-              ];
-    """
     
     # image set folder
     partSetFolder, partDot, partExt = file.rpartition('.');
@@ -971,4 +985,5 @@ def main():
     
 if __name__ == "__main__":
     main();
+    #cProfile.run('main()')
     
