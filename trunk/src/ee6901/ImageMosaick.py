@@ -242,7 +242,7 @@ class ImageManager(object):
             self.dictIdImage[im.id]     = im;
             # increase total images
             self.totalImages += 1;
-            print "Total images: ", self.totalImages;
+            #print "Total images: ", self.totalImages;
             return im;
     
     def getImageByID(self, id):
@@ -377,6 +377,7 @@ class ImageMosaick(object):
         
         manager = ImageManager();
         self.images = [manager.loadImage(file) for file in imageFiles];
+        print "Total images: ", manager.totalImages;
         
         elapsed = time.clock() - start;
         print "SIFT: ", elapsed; 
@@ -389,13 +390,15 @@ class ImageMosaick(object):
         
         # print the number of correspondences for each match before RANSAC
         # remove match that has two low correspondences
+        
         low = [];
         for m in self.match:
             nbCorrs = len(self.match[m].locs1);
-            print m, " has ", nbCorrs, " correspondences."
-            if nbCorrs < 15:
+            print m, " has ", nbCorrs, " correspondences."            
+            if nbCorrs < 4:
                 low.append(m);
-                print m, " has too low correspondences and is discarded."        
+                #print m, " has too low correspondences and is discarded."
+            
         for m in low:
             del self.match[m];
         
@@ -410,8 +413,14 @@ class ImageMosaick(object):
                 #if outliers > 1.5 * inliers:
                 #    self.match[i][j] = None;
         """
+        low = [];
         for m in self.match:
             inliers, outliers = self.match[m].ransac();
+            if inliers < 15 or inliers < 0.1 * outliers:
+                low.append(m);
+        for m in low:
+            del self.match[m];
+            
         elapsed = time.clock() - start;
         print "RANSAC: ", elapsed;
                 
@@ -457,6 +466,7 @@ class ImageMosaick(object):
         #pylab.imsave(mosaickFile, self.pixels);       
         pilImage = Image.fromarray(self.pixels);
         pilImage.save(mosaickFile);
+        print "Saved to ", mosaickFile;
         
     def findCorrespondenceBruteForce(self):
         """
@@ -542,7 +552,8 @@ class ImageMosaick(object):
                 ft = self.images[i].descriptors[n];
                 
                 #start = time.clock();
-                dist, idx = kdtree.query(ft, knearest, eps=0.01, distance_upper_bound=0.1); # prune more? 
+                #dist, idx = kdtree.query(ft, knearest, eps=0.01, distance_upper_bound=0.1); # prune more? 
+                dist, idx = kdtree.query(ft, knearest); # prune more?
                 #elapsed = time.clock() - start;
                 #print "Query: ", elapsed
                 #print dist
@@ -797,53 +808,63 @@ class ImageMosaick(object):
             
         # stitching
         zero = [0] * self.images[0].channels;
+        false = [False] * len(self.images);
+        
         for i in range(h):
+            #print "Row: %d/%d" % (i, h-1)
             # keep track of the current overlap images
-            overlap = [];
+            #overlap = [];
+            if i not in rasterDictY: continue;
             
-            rasterDictY_i = None;
-            if i in rasterDictY:
-                rasterDictY_i = rasterDictY[i];
-                
+            activeImages = false; # all false
+            rasterDictY_i = rasterDictY[i];
             for j in range(w):
                 # update overlap images
-                rasterList = [];
+                #rasterList = [];
                 #if i in rasterDictY:
-                if not rasterDictY_i is None:
-                    #if j in rasterDictY[i]:
-                    if j in rasterDictY_i:
-                        #rasterList = rasterDictY[i][j];
-                        rasterList = rasterDictY_i[j];
+                #if not rasterDictY_i is None:
+                #if j in rasterDictY[i]:
+                if j in rasterDictY_i:
+                    #rasterList = rasterDictY[i][j];
+                    rasterList = rasterDictY_i[j];
                 
-                removeList = [];
-                for r in rasterList:
-                    """
-                    try:
-                        #index = overlap.index(r);
-                        overlap.index(r);
-                        # current image is already found in overlap
-                        # this means we are going out of this image. After this loop remove this image.
-                        removeList.append(r);
-                    except ValueError:
-                        # this image is not found in overlap.
-                        # Add this image and start using it.
-                        overlap.append(r);
-                    """
-                    found = False;
-                    for o in overlap:
-                        if o == r:
+                    #removeList = [];
+                    for r in rasterList:
+                        """
+                        try:
+                            #index = overlap.index(r);
+                            overlap.index(r);
+                            # current image is already found in overlap
+                            # this means we are going out of this image. After this loop remove this image.
                             removeList.append(r);
-                            found = True;
-                            break;
-                    if not found:
-                        overlap.append(r);                        
+                        except ValueError:
+                            # this image is not found in overlap.
+                            # Add this image and start using it.
+                            overlap.append(r);
+                        """
+                        
+                        """
+                        found = False;
+                        for o in overlap:
+                            if o == r:
+                                removeList.append(r);
+                                found = True;
+                                break;
+                        if not found:
+                            overlap.append(r);
+                        """
+                        # ignore the last pixel (on boundary).
+                        activeImages[r] = not activeImages[r];                        
                     
                 #p = np.matrix([[j], [i], [1]]);
                 p = [j, i, 1];
                 sum = zero;
                 total = 0;
                 #for im in self.images:
-                for o in overlap:
+                #for o in overlap:
+                for o in range(len(self.images)):
+                    if not activeImages[o]: continue;
+                     
                     im = self.images[o];
                     
                     # take the inverse homography to the current image's domain
@@ -873,8 +894,8 @@ class ImageMosaick(object):
                     pixels[i, j] = (sum / total).astype(np.uint8);
                     
                 # clean up any complete overlap image
-                for r in removeList:
-                    overlap.remove(r);
+                #for r in removeList:
+                #    overlap.remove(r);
                     
         self.pixels = pixels;
         
@@ -967,7 +988,7 @@ def main():
     # full path
     fullImages = [folder + "/" + setFolder + "/" + image for image in images];    
     # print out image list
-    
+    print "Input images: "
     for i in range(len(images)):
         if not os.path.exists(fullImages[i]):
             print images[i], " not found!"
