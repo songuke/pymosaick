@@ -5,6 +5,7 @@ Created on Mar 31, 2010
 
 import os
 import numpy as np
+from numpy import *
 from scipy import linalg
 import scipy as sp
 import pylab
@@ -147,23 +148,21 @@ class ImageObject(object):
         self.weight = weight;
         
     def interpolate(self, x, y):
-        #h, w = self.shape;
-        
+        """
         x0 = np.floor(x);
         x1 = x0 + 1;
         y0 = np.floor(y);
         y1 = y0 + 1;
         
-        """
-        if x0 < 0:  x0 = 0;
-        if x0 >= w: x0 = w - 1;
-        if x1 < 0:  x1 = 0;
-        if x1 >= w: x1 = w - 1;
-        if y0 < 0:  y0 = 0;
-        if y0 >= h: y0 = h - 1;
-        if y1 < 0:  y1 = 0;
-        if y1 >= h: y1 = h - 1;
-        """
+        
+        #if x0 < 0:  x0 = 0;
+        #if x0 >= w: x0 = w - 1;
+        #if x1 < 0:  x1 = 0;
+        #if x1 >= w: x1 = w - 1;
+        #if y0 < 0:  y0 = 0;
+        #if y0 >= h: y0 = h - 1;
+        #if y1 < 0:  y1 = 0;
+        #if y1 >= h: y1 = h - 1;        
         
         s = x - x0;
         t = y - y0;
@@ -179,6 +178,31 @@ class ImageObject(object):
                 
         colorAB = (1 - s) * colorA + s * colorB;
         colorCD = (1 - s) * colorC + s * colorD;
+        
+        color = (1 - t) * colorAB + t * colorCD;
+        return color; 
+        """
+        
+        x0 = floor(x);
+        x1 = x0 + 1;
+        y0 = floor(y);
+        y1 = y0 + 1;
+        
+        s = x - x0;
+        t = y - y0;
+        
+        # A --- B
+        # | E   |
+        # C --- D
+        
+        colorA = self.pixels[y0, x0];
+        colorB = self.pixels[y0, x1];
+        colorC = self.pixels[y1, x0];
+        colorD = self.pixels[y1, x1];
+        
+        s1 = 1 - s;
+        colorAB = s1 * colorA + s * colorB;
+        colorCD = s1 * colorC + s * colorD;
         
         color = (1 - t) * colorAB + t * colorCD;
         return color; 
@@ -797,9 +821,6 @@ class ImageMosaick(object):
                 if v not in l:
                     l.add(v);
 
-        #pylab.figure();
-        #pylab.ion();
-        #pixels = np.ndarray(shape=(h, w, 3), dtype=float, order='C');
         # pixels are stored in uint8 data type so save storage and increase performance.
         if self.images[0].channels > 1:
             pixels = np.zeros((h, w, self.images[0].channels), dtype=np.uint8);
@@ -810,59 +831,31 @@ class ImageMosaick(object):
         zero = [0] * self.images[0].channels;
         false = [False] * len(self.images);
         
-        for i in range(h):
+        """
+        for i in xrange(h):
             #print "Row: %d/%d" % (i, h-1)
             # keep track of the current overlap images
-            #overlap = [];
             if i not in rasterDictY: continue;
             
             activeImages = false; # all false
             rasterDictY_i = rasterDictY[i];
-            for j in range(w):
+            for j in xrange(w):
                 # update overlap images
-                #rasterList = [];
-                #if i in rasterDictY:
-                #if not rasterDictY_i is None:
-                #if j in rasterDictY[i]:
                 if j in rasterDictY_i:
-                    #rasterList = rasterDictY[i][j];
                     rasterList = rasterDictY_i[j];
                 
-                    #removeList = [];
                     for r in rasterList:
-                        """
-                        try:
-                            #index = overlap.index(r);
-                            overlap.index(r);
-                            # current image is already found in overlap
-                            # this means we are going out of this image. After this loop remove this image.
-                            removeList.append(r);
-                        except ValueError:
-                            # this image is not found in overlap.
-                            # Add this image and start using it.
-                            overlap.append(r);
-                        """
-                        
-                        """
-                        found = False;
-                        for o in overlap:
-                            if o == r:
-                                removeList.append(r);
-                                found = True;
-                                break;
-                        if not found:
-                            overlap.append(r);
-                        """
                         # ignore the last pixel (on boundary).
                         activeImages[r] = not activeImages[r];                        
-                    
+                
                 #p = np.matrix([[j], [i], [1]]);
+                # list is faster than np.matrix
                 p = [j, i, 1];
                 sum = zero;
                 total = 0;
                 #for im in self.images:
                 #for o in overlap:
-                for o in range(len(self.images)):
+                for o in xrange(len(self.images)):
                     if not activeImages[o]: continue;
                      
                     im = self.images[o];
@@ -886,17 +879,101 @@ class ImageMosaick(object):
                         color = im.interpolate(q[0], q[1]);
                     
                     # weight
-                    #w = (q[1] - im.center[0])**2 + (q[0] - im.center[1])**2;
                     we = im.weight[np.floor(q[1]), np.floor(q[0])];
                     sum += we * color;
                     total += we;
                 if total > 0:
-                    pixels[i, j] = (sum / total).astype(np.uint8);
+                    #pixels[i, j] = (sum / total).astype(np.uint8);
+                    pixels[i, j] = sum / total;
+        """
+        
+        # no lookup np. version
+        orange = xrange(len(self.images));
+        wrange = xrange(w);
+        hrange = xrange(h);
+        
+        for i in hrange:
+            #print "Row: %d/%d" % (i, h-1)
+            # keep track of the current overlap images
+            if i not in rasterDictY: continue;
+            
+            activeImages = false; # all false
+            rasterDictY_i = rasterDictY[i];
+            for j in wrange:
+                # update overlap images
+                if j in rasterDictY_i:
+                    rasterList = rasterDictY_i[j];
+                
+                    for r in rasterList:
+                        # ignore the last pixel (on boundary).
+                        activeImages[r] = not activeImages[r];                        
+                
+                #p = np.matrix([[j], [i], [1]]);
+                # list is faster than np.matrix
+                p = [j, i, 1];
+                sum = zero;
+                total = 0;
+                #for im in self.images:
+                #for o in overlap:
+                for o in orange:
+                    if not activeImages[o]: continue;
+                     
+                    im = self.images[o];
                     
-                # clean up any complete overlap image
-                #for r in removeList:
-                #    overlap.remove(r);
+                    # take the inverse homography to the current image's domain
+                    # Note: inverse matrix H every time causes a lot of 
+                    # performance penalty.
+                    #q = np.ravel(im.H.I * p);
+                    #q = np.ravel(im.HI * p);
+                    # Note: doing ravel and np.matrix multiplication is inconvenient
+                    # and incurred 3 times performance penalty as compared to 
+                    # np.dot and list.
+                    q = dot(im.HI, p);
+                    #q /= q[2]; # save a division
+                    q2_rep = 1.0 / q[2];
+                    x = q[0] * q2_rep;
+                    y = q[1] * q2_rep;
+                    qh, qw = im.shape;
+                    if x < 0 or x >= qw or y < 0 or y >= qh: continue;
+                    # no interpolation at boundary
                     
+                    x0 = floor(x);
+                    y0 = floor(y);
+                    impix = im.pixels;
+                    if (qw - 1 <= x and x < qw) or (qh - 1 <= y and y < qh): 
+                        color = impix[y0, x0];
+                    else:
+                        #color = im.interpolate(q[0], q[1]);
+                        # bilinear interpolation without function call                        
+                        x1 = x0 + 1;                        
+                        y1 = y0 + 1;
+                        
+                        s = x - x0;
+                        t = y - y0;
+                        
+                        # A --- B
+                        # | E   |
+                        # C --- D
+                        
+                        colorA = impix[y0, x0];
+                        colorB = impix[y0, x1];
+                        colorC = impix[y1, x0];
+                        colorD = impix[y1, x1];
+                        
+                        s1 = 1 - s;
+                        colorAB = s1 * colorA + s * colorB;
+                        colorCD = s1 * colorC + s * colorD;
+                        
+                        color = (1 - t) * colorAB + t * colorCD;
+                    
+                    # weight
+                    we = im.weight[y0, x0];
+                    sum += we * color;
+                    total += we;
+                if total > 0:
+                    #pixels[i, j] = (sum / total).astype(np.uint8);
+                    pixels[i, j] = sum / total;
+        
         self.pixels = pixels;
         
     def show(self):
